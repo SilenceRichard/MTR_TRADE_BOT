@@ -1,0 +1,33 @@
+name: Deploy MTR BOT
+
+on:
+  push:
+    branches:
+      - main  # 只在主分支推送时触发
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production  # 指定使用 'production' 环境中的 secrets
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}  # 配置 GitHub Secrets 中的 SSH 密钥
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Deploy to server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            cd ~/MTR_TRADE_BOT  # 远程项目路径
+            git pull origin main  # 拉取最新代码
+            npm install  # 安装依赖
+            pm2 restart "mtrbot"  # 重启 PM2 应用
+            exit
+          EOF
