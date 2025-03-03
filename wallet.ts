@@ -13,7 +13,9 @@ const vaultClient = vault({
 /**
  * 使用 Vault Transit 进行解密
  */
-async function decryptWithVaultTransit(encryptedMnemonic: string): Promise<any> {
+async function decryptWithVaultTransit(
+  encryptedMnemonic: string
+): Promise<any> {
   try {
     const response = await axios.post(
       `${process.env.VAULT_ADDR}/v1/transit/decrypt/solana`,
@@ -24,6 +26,8 @@ async function decryptWithVaultTransit(encryptedMnemonic: string): Promise<any> 
         },
       }
     );
+    console.log("Vault Transit 解密结果:", response.data);
+    console.log(Buffer.from(response.data.data.plaintext, "base64").toString());
     // 解码 Base64
     return Buffer.from(response.data.data.plaintext, "base64").toString();
   } catch (error) {
