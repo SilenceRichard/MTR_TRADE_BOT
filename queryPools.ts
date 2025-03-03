@@ -64,7 +64,6 @@ export const sendPoolDetail = async (bot: TelegramBot, chatId: number, poolName:
       {
         text: `Pair ${index + 1}`,
         callback_data: `pair_detail_${pair.address}`,
-        // url: `https://app.meteora.ag/dlmm/${pair.address}`
       },
     ]);
 
@@ -101,3 +100,4 @@ export const handleUserQuery = async (
   userQueries[chatId] = query;
   await sendQueryResults(bot, chatId);
 };
+

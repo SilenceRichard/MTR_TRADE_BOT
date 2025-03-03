@@ -1,12 +1,17 @@
 import TelegramBot from "node-telegram-bot-api";
-import { BOT_TOKEN } from "./config";
+import { BOT_TOKEN, RPC } from "./config";
 import { handleUserQuery, sendQueryResults, sendPoolDetail } from "./queryPools";
+import { getWallet } from "./wallet";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import DLMM from "@meteora-ag/dlmm";
 
 // 记录用户查询状态
 const waitingForSearchTerm = new Set<number>();
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-
+let user: Keypair;
+let dlmmPool: DLMM;
+const connection = new Connection(RPC, "processed");
 // 发送主菜单
 const sendMainMenu = (chatId: number) => {
   bot.sendMessage(chatId, "🔍 Please choose an action:", {
@@ -40,6 +45,10 @@ bot.on("callback_query", async (callbackQuery) => {
   } else if (action?.startsWith("pair_detail_")) {
     const pairAddress = action.replace("pair_detail_", "");
     bot.sendMessage(chatId, `Connecting Pair: ${pairAddress}`);
+    dlmmPool = await DLMM.create(connection, new PublicKey(pairAddress), {
+      cluster: "mainnet-beta",
+    });
+    bot.sendMessage(chatId, `Connect DLMM Pool Success!`);
   }
 });
 
@@ -54,7 +63,9 @@ bot.on("message", async (msg) => {
 });
 
 // 启动 Bot
-bot.onText(/\/start/, (msg) => {
+bot.onText(/\/start/, async (msg) => {
+  const user = await getWallet();
+  bot.sendMessage(msg.chat.id, `🚀 Welcome to Meteora Bot, ${user.publicKey.toBase58()}!`);
   sendMainMenu(msg.chat.id);
 });
 

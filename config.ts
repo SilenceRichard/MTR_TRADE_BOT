@@ -50,3 +50,5 @@ export type PairInfo = {
     hour_24: number;
   };
 };
+
+export const RPC = process.env.RPC || "https://api.devnet.solana.com";
