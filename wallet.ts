@@ -26,8 +26,6 @@ async function decryptWithVaultTransit(
         },
       }
     );
-    console.log("Vault Transit 解密结果:", response.data);
-    console.log(Buffer.from(response.data.data.plaintext, "base64").toString());
     // 解码 Base64
     return Buffer.from(response.data.data.plaintext, "base64").toString();
   } catch (error) {
