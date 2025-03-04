@@ -1,6 +1,9 @@
-import { fetchMeteoraPools } from "./api";
+import { fetchMeteoraPools } from "./api/pool";
 import TelegramBot from "node-telegram-bot-api";
 import { QueryParams } from "./config";
+import { fetchPairInfo } from "./api/DLMM";
+import { formatNumber, getTokenName } from "./utils/format";
+import BigNumber from "bignumber.js";
 
 const userQueries: Record<number, QueryParams> = {};
 
@@ -101,3 +104,22 @@ export const handleUserQuery = async (
   await sendQueryResults(bot, chatId);
 };
 
+
+export const sendPairInfo = async (bot: TelegramBot, chatId: number, pairHash: string) => {
+    bot.sendMessage(chatId, '正在查询池子信息，请稍等...');
+    const pairInfo = await fetchPairInfo(pairHash);
+  if (!pairInfo) {
+    bot.sendMessage(chatId, '❌ 未找到池信息，请检查输入的 pairHash 是否正确！');
+    return;
+  }
+  const { tokenX, tokenY } = getTokenName(pairInfo);
+  const responseMessage = `✅ **池子信息**
+  🔹 **总锁仓量 (TVL)：** ${formatNumber(new BigNumber(pairInfo.liquidity))}
+  🔹 **Token X:** ${tokenX}
+  🔹 **Token Y:** ${tokenY}
+  🔹 **24小时费用:** ${formatNumber(new BigNumber(pairInfo.fees_24h))}
+  🔹 **Bin Step:** ${pairInfo.bin_step}
+  `;
+
+  bot.sendMessage(chatId, responseMessage, { parse_mode: 'Markdown' });
+}

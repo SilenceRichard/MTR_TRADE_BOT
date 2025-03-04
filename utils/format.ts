@@ -1,4 +1,5 @@
 import BigNumber from "bignumber.js";
+import { PairInfo } from "../config";
 
 // 定义 Pool 结构
 export type Pool = {
@@ -22,8 +23,16 @@ export type Pool = {
   }[];
 };
 
+export const getTokenName = (pair: PairInfo) => {
+  const names = pair.name?.split("-");
+  return {
+    tokenX: names?.[0],
+    tokenY: names?.[1],
+  }
+}
+
 // 格式化数字：自动转换 K/M/B，去掉多余 0
-const formatNumber = (num: BigNumber): string => {
+export const formatNumber = (num: BigNumber): string => {
   if (num.isZero()) return "0";
 
   const absNum = num.abs();

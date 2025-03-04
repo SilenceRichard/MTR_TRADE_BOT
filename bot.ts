@@ -4,6 +4,7 @@ import {
   handleUserQuery,
   sendQueryResults,
   sendPoolDetail,
+  sendPairInfo,
 } from "./queryPools";
 import { getWallet } from "./wallet";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
@@ -50,16 +51,19 @@ bot.on("callback_query", async (callbackQuery) => {
     } else if (action === "main_menu") {
       sendMainMenu(chatId);
     } else if (action?.startsWith("pair_detail_")) {
+      // 查看交易池详情
       const pairAddress = action.replace("pair_detail_", "");
-      bot.sendMessage(chatId, `Connecting Pair: ${pairAddress}`);
       dlmmPool = await DLMM.create(connection, new PublicKey(pairAddress), {
         cluster: "mainnet-beta",
       });
-      bot.sendMessage(chatId, `Connect DLMM Pool Success!`);
+      await sendPairInfo(bot, chatId, pairAddress);
     }
   } catch (error) {
     console.error("Error handling callback query:", error);
-    bot.sendMessage(callbackQuery.message?.chat.id!, "⚠️ Something went wrong!");
+    bot.sendMessage(
+      callbackQuery.message?.chat.id!,
+      "⚠️ Something went wrong!"
+    );
   }
 });
 
@@ -75,7 +79,8 @@ bot.on("message", async (msg) => {
 
 // 启动 Bot
 bot.onText(/\/start/, async (msg) => {
-  const user = await getWallet();
+  const userWallet = await getWallet();
+  user = userWallet;
   bot.sendMessage(
     msg.chat.id,
     `🚀 Welcome to Meteora Bot, ${user.publicKey.toBase58()}!`

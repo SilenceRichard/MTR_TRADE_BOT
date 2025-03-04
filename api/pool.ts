@@ -1,6 +1,6 @@
 import axios from "axios";
-import { METEORA_API_URL, QueryParams } from "./config";
-import { formatPoolsData, Pool } from "./format";
+import { METEORA_API_URL, QueryParams } from "../config";
+import { formatPoolsData, Pool } from "../utils/format";
 
 const MAX_RETRIES = 3;
 
