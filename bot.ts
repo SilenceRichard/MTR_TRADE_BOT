@@ -1,12 +1,12 @@
 import TelegramBot from "node-telegram-bot-api";
-import { BOT_TOKEN, RPC } from "./config";
+import { BOT_TOKEN, PairInfo, RPC } from "./config";
 import {
   handleUserQuery,
   sendQueryResults,
   sendPoolDetail,
   sendPairInfo,
 } from "./queryPools";
-import { getWallet } from "./wallet";
+import { getWallet, getWalletBalance } from "./utils/wallet";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import DLMM from "@meteora-ag/dlmm";
 
@@ -16,6 +16,9 @@ const waitingForSearchTerm = new Set<number>();
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 let user: Keypair;
 let dlmmPool: DLMM;
+let pairInfo: PairInfo | undefined = undefined;
+// 记录用户输入金额状态
+const waitingForAmount = new Map<number, { tokenMint: string; sellTokenName: string; balance: number }>();
 const connection = new Connection(RPC, "processed");
 // 发送主菜单
 const sendMainMenu = (chatId: number) => {
@@ -56,7 +59,21 @@ bot.on("callback_query", async (callbackQuery) => {
       dlmmPool = await DLMM.create(connection, new PublicKey(pairAddress), {
         cluster: "mainnet-beta",
       });
-      await sendPairInfo(bot, chatId, pairAddress);
+      bot.sendMessage(chatId, "🔍 Fetching pair info...");
+      pairInfo = await sendPairInfo(bot, chatId, pairAddress);
+    } else if (action?.startsWith("lpswap_")) {
+      // lp swap逻辑
+      bot.sendMessage(chatId, "🔍 Fetching wallet info...");
+      const tokenMint = action.split("_")[1];
+      const sellTokenName = action.split("_")[2];
+      const balance = await getWalletBalance({
+        connection,
+        mintAddress: tokenMint,
+        publicKey: user.publicKey,
+      });
+      bot.sendMessage(chatId, `💰 Your balance: ${balance} ${sellTokenName}
+        Please input the token amount you want swap`);
+      waitingForAmount.set(chatId, { tokenMint, sellTokenName, balance });
     }
   } catch (error) {
     console.error("Error handling callback query:", error);
@@ -74,6 +91,19 @@ bot.on("message", async (msg) => {
     waitingForSearchTerm.delete(chatId);
     const searchTerm = msg.text!.trim();
     await handleUserQuery(bot, chatId, searchTerm);
+  } else if (waitingForAmount.has(chatId)) {
+    const { tokenMint, sellTokenName, balance } = waitingForAmount.get(chatId)!;
+    const amount = parseFloat(msg.text!.trim());
+    if (isNaN(amount) || amount < 0) {
+      bot.sendMessage(chatId, "⚠️ Please enter a valid amount greater than or equal to 0.");
+    } else if (amount > balance) {
+      bot.sendMessage(chatId, `⚠️ The entered amount exceeds your balance of ${balance} ${sellTokenName}.`);
+    } else {
+      waitingForAmount.delete(chatId);
+      // 处理用户输入的金额
+      bot.sendMessage(chatId, `You entered: ${amount} ${sellTokenName}`);
+      // 在这里添加处理交换逻辑的代码
+    }
   }
 });
 

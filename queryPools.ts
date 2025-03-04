@@ -4,6 +4,7 @@ import { QueryParams } from "./config";
 import { fetchPairInfo } from "./api/DLMM";
 import { formatNumber, getTokenName } from "./utils/format";
 import BigNumber from "bignumber.js";
+import { Connection } from "@solana/web3.js";
 
 const userQueries: Record<number, QueryParams> = {};
 
@@ -35,7 +36,9 @@ export const sendQueryResults = async (bot: TelegramBot, chatId: number) => {
       { text: "⬅️ Previous Page", callback_data: "page_prev" },
       { text: "Next Page ➡️", callback_data: "page_next" },
     ]);
-    buttons.push([{ text: "🔙 Back to Main Menu", callback_data: "main_menu" }]);
+    buttons.push([
+      { text: "🔙 Back to Main Menu", callback_data: "main_menu" },
+    ]);
 
     bot.sendMessage(chatId, message, {
       parse_mode: "Markdown",
@@ -47,7 +50,11 @@ export const sendQueryResults = async (bot: TelegramBot, chatId: number) => {
 };
 
 // 发送池子详情
-export const sendPoolDetail = async (bot: TelegramBot, chatId: number, poolName: string) => {
+export const sendPoolDetail = async (
+  bot: TelegramBot,
+  chatId: number,
+  poolName: string
+) => {
   try {
     const pools = await fetchMeteoraPools(userQueries[chatId]);
     const pool = pools?.find((p) => p.name === poolName);
@@ -70,7 +77,9 @@ export const sendPoolDetail = async (bot: TelegramBot, chatId: number, poolName:
       },
     ]);
 
-    buttons.push([{ text: "🔙 Back to Query Results", callback_data: "query_pair" }]);
+    buttons.push([
+      { text: "🔙 Back to Query Results", callback_data: "query_pair" },
+    ]);
 
     bot.sendMessage(chatId, message, {
       parse_mode: "Markdown",
@@ -104,12 +113,17 @@ export const handleUserQuery = async (
   await sendQueryResults(bot, chatId);
 };
 
-
-export const sendPairInfo = async (bot: TelegramBot, chatId: number, pairHash: string) => {
-    bot.sendMessage(chatId, '正在查询池子信息，请稍等...');
-    const pairInfo = await fetchPairInfo(pairHash);
+export const sendPairInfo = async (
+  bot: TelegramBot,
+  chatId: number,
+  pairHash: string
+) => {
+  const pairInfo = await fetchPairInfo(pairHash);
   if (!pairInfo) {
-    bot.sendMessage(chatId, '❌ 未找到池信息，请检查输入的 pairHash 是否正确！');
+    bot.sendMessage(
+      chatId,
+      "❌ 未找到池信息，请检查输入的 pairHash 是否正确！"
+    );
     return;
   }
   const { tokenX, tokenY } = getTokenName(pairInfo);
@@ -120,6 +134,15 @@ export const sendPairInfo = async (bot: TelegramBot, chatId: number, pairHash: s
   🔹 **24小时费用:** ${formatNumber(new BigNumber(pairInfo.fees_24h))}
   🔹 **Bin Step:** ${pairInfo.bin_step}
   `;
-
-  bot.sendMessage(chatId, responseMessage, { parse_mode: 'Markdown' });
-}
+  const buttons = [
+    [{ text: `Swap ${tokenX} to ${tokenY}`, callback_data: `lpswap_${pairInfo.mint_x}_${tokenX}` }],
+    [{ text: `Swap ${tokenY} to ${tokenX}`, callback_data: `lpswap_${pairInfo.mint_y}_${tokenY}` }],
+    [{ text: "🔙 Back to main menu", callback_data: "main_menu" }]
+  ];
+  
+  bot.sendMessage(chatId, responseMessage, {
+    parse_mode: "Markdown",
+    reply_markup: { inline_keyboard: buttons },
+  });
+  return pairInfo;
+};
