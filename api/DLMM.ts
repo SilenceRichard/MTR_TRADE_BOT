@@ -1,11 +1,9 @@
-import DLMM from "@meteora-ag/dlmm";
+import DLMM, { BinLiquidity, StrategyParameters } from "@meteora-ag/dlmm";
+import { Connection, PublicKey } from "@solana/web3.js";
 import axios from "axios";
+import BN from "bn.js";
 
-export async function getActiveBin(dlmmPool: DLMM) {
-  // Get pool state
-  const activeBin = await dlmmPool.getActiveBin();
-  return activeBin;
-}
+const STEP = 5;
 
 export type PairInfo = {
   address: string;
@@ -46,14 +44,75 @@ export type PairInfo = {
 };
 export async function fetchPairInfo(pairHash: string) {
   try {
-    const res = await axios.get(`https://app.meteora.ag/clmm-api/pair/${pairHash}`);
+    const res = await axios.get(
+      `https://app.meteora.ag/clmm-api/pair/${pairHash}`
+    );
     const pairInfo: PairInfo = res.data;
     if (!pairInfo) {
-      throw new Error('Pair not found');
+      throw new Error("Pair not found");
     }
     return pairInfo;
   } catch (error) {
-    console.error('Error fetching pair info:', error);
+    console.error("Error fetching pair info:", error);
     return null;
   }
 }
+
+export const getActiveBin = async (dlmmPool: DLMM) => {
+  // Get pool state
+  const activeBin = await dlmmPool.getActiveBin();
+  return activeBin;
+};
+const getMinBinId = (props: {
+  step: number;
+  actBin: BinLiquidity;
+  sellingX: boolean;
+}) => {
+  const { step, actBin, sellingX } = props;
+  const minBinId = sellingX ? actBin.binId : actBin.binId - step;
+  return minBinId;
+};
+const getMaxBinId = (props: {
+  step: number;
+  actBin: BinLiquidity;
+  sellingX: boolean;
+}) => {
+  const { step, actBin, sellingX } = props;
+  const maxBinId = sellingX ? actBin.binId + step : actBin.binId;
+  return maxBinId;
+};
+
+export const getBinsBetweenLowerAndUpperBound = async (props: {
+  dlmmPool: DLMM,
+  actBin: BinLiquidity,
+  sellingX: boolean;
+}) => {
+  const { dlmmPool, actBin, sellingX } = props;
+  const maxBinId = getMaxBinId({ step: STEP, actBin, sellingX });
+  const minBinId = getMinBinId({ step: STEP, actBin, sellingX });
+  const bins = await dlmmPool.getBinsBetweenLowerAndUpperBound(minBinId, maxBinId);
+  return bins;
+};
+
+export const createOneSidePositions = async (
+  dlmmPool: DLMM,
+  params: {
+    connection: Connection;
+    user: PublicKey;
+    positionPubKey: PublicKey;
+    totalXAmount: BN;
+    totalYAmount: BN;
+    strategy: StrategyParameters;
+  }
+) => {
+  const { totalXAmount, positionPubKey, user, totalYAmount, strategy } = params;
+  const createPositionTx =
+    await dlmmPool.initializePositionAndAddLiquidityByStrategy({
+      positionPubKey: positionPubKey,
+      user,
+      totalXAmount,
+      totalYAmount,
+      strategy,
+    });
+  return createPositionTx;
+};

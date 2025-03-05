@@ -106,3 +106,14 @@ export const getWalletBalance = async ({
     return balance.value.uiAmount || 0;
   }
 };
+
+export const fetchDecimal = async (
+  connection: Connection,
+  mintAddress: string
+) => {
+  const res = await connection.getParsedAccountInfo(new PublicKey(mintAddress));
+  if (!res.value) {
+    return 0;
+  }
+  return (res.value.data as any).parsed.info.decimals;
+};
