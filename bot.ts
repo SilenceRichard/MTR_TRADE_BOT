@@ -23,6 +23,7 @@ import {
 } from "./api/DLMM";
 import { getTokenName } from "./utils/format";
 import BN from "bn.js";
+import { buildOptimalTransaction } from "./utils/tx";
 
 // 记录用户查询状态
 const waitingForSearchTerm = new Set<number>();
@@ -128,27 +129,42 @@ bot.on("callback_query", async (callbackQuery) => {
         totalYAmount,
         strategy,
       });
-      const recentBlockhash = await connection.getLatestBlockhash();
-      const opTx = new VersionedTransaction(
-        new TransactionMessage({
-          instructions: createTx.instructions,
-          recentBlockhash: recentBlockhash.blockhash,
-          payerKey: user.publicKey,
-        }).compileToV0Message([])
-      );
+      // createTx.sign(positionKeyPair);
+      // 获取最新区块哈希及其最后有效高度
+      const res = await buildOptimalTransaction?.({
+        transaction: createTx,
+        connection,
+        publicKey: user.publicKey,
+      });
+      const { opTx, blockhash, lastValidBlockHeight } = res!;
+      if (!opTx) {
+        bot.sendMessage(chatId, "⚠️ Failed to build optimal transaction!");
+        return;
+      }
+      // 最终发送交易前加模拟逻辑
+      const simulation = await connection.simulateTransaction(opTx, {
+        sigVerify: false,
+      });
+      if (simulation.value.err) {
+        bot.sendMessage(
+          chatId,
+          `⚠️ Transaction simulation error: ${simulation.value.err}`
+        );
+        return;
+      }
+
       opTx.sign([user, positionKeyPair]);
       // 5. 发送交易
       const signature = await connection.sendTransaction(opTx, {
         skipPreflight: false, // 设为 true 以跳过预检
-        // maxRetries: 5, // 可选：增加重试次数
+        maxRetries: 5, // 可选：增加重试次数
       });
 
-      // 6. 确认交易
+      // 确认交易
       const confirmation = await connection.confirmTransaction(
-        signature,
+        { blockhash, lastValidBlockHeight, signature },
         "confirmed"
       );
-      console.log("Transaction confirmed:", confirmation);
       bot.sendMessage(
         chatId,
         "✅ Position created successfully! " + confirmation
@@ -224,7 +240,7 @@ bot.on("message", async (msg) => {
         }/${sellingX ? tokenX : tokenY}\n💸 *Max Output*: ${maxOutPut} ${
           sellingX ? tokenY : tokenX
         }\n${rangeMsg}`;
-        const positionKeyPair = Keypair.generate();
+        const positionKeyPair = new Keypair();
         const tokenXAmount = new BN(
           sellingX ? amount * 10 ** tokenXDecimal : 0
         );
