@@ -39,7 +39,6 @@ export const buildOptimalTransaction = async (params: {
   }
 
   const consumedCU = simResult.value.unitsConsumed || 200_000;
-  console.log("Actual consumed CU:", consumedCU);
 
   // 设置额外 buffer 防止失败
   const cuBufferMultiplier = 1.2; // 增加20%的buffer
