@@ -1,5 +1,5 @@
 ---
-description: 
+description: Use the Conventional Commit Messages specification to generate commit messages
 globs: 
 alwaysApply: false
 ---

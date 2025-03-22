@@ -1,9 +1,9 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
-# Project Brief Template
+ # Project Brief Template
 
 When creating a project brief, follow this structured format to ensure clarity and completeness:
 

@@ -1,5 +1,5 @@
 ---
-description:  This rule is helpful for creating structured, comprehensive project documentation that clearly communicates your project's purpose, components, and implementation guidelines. It ensures consistency in documentation format, helps team members understand the project scope, facilitates onboarding of new developers, and serves as a reference point for decision-making throughout the development process. By following this template, you can effectively bridge the gap between conceptual ideas and practical implementation, making complex projects more manageable and collaborative.
+description: 
 globs: 
 alwaysApply: false
 ---

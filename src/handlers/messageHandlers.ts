@@ -9,6 +9,7 @@ import { showPositionDetails, showUserPositions } from "../services/positionServ
 import { getTokenName } from "../utils/format";
 import BN from "bn.js";
 import { sendAndConfirmTransaction } from "@solana/web3.js";
+import { CreatePositionParams } from '../../models/Position';
 
 /**
  * Initialize message handlers for the Telegram bot
@@ -194,6 +195,109 @@ export const initMessageHandlers = (
         } finally {
           // Clean up state
           state.waitingForAmount.delete(chatId);
+        }
+      }
+      
+      // 检查用户是否正在确认创建仓位
+      if (state.waitingForCreatingPosition.has(chatId) && msg.text) {
+        const callbackState = state.waitingForCreatingPosition.get(chatId);
+        
+        if (callbackState?.positionKeyPair && callbackState.totalXAmount && callbackState.totalYAmount && callbackState.strategy) {
+          // 用户确认创建仓位
+          if (msg.text.toLowerCase() === "yes" || msg.text.toLowerCase() === "confirm" || msg.text === "确认") {
+            try {
+              // 创建并保存仓位的逻辑，从这里开始可能需要根据您的实际代码进行调整
+              bot.sendMessage(chatId, "⏳ Creating your position...");
+              
+              // 获取代币对信息
+              let tokenXStr: string;
+              let tokenYStr: string;
+              
+              if (typeof state.pairInfo.mint_x === 'string') {
+                // 如果是字符串，尝试获取代币名称
+                const tokenInfo = getTokenName(state.pairInfo);
+                tokenXStr = tokenInfo.tokenX || 'TokenX';
+                tokenYStr = tokenInfo.tokenY || 'TokenY';
+              } else {
+                // 默认值
+                tokenXStr = 'TokenX';
+                tokenYStr = 'TokenY';
+              }
+              
+              // 创建新仓位参数
+              const createParams: CreatePositionParams = {
+                poolAddress: state.pairInfo.address,
+                tokenPair: {
+                  tokenASymbol: tokenXStr,
+                  tokenBSymbol: tokenYStr,
+                  tokenAMint: state.pairInfo.mint_x,
+                  tokenBMint: state.pairInfo.mint_y,
+                  tokenADecimals: state.tokenXDecimal,
+                  tokenBDecimals: state.tokenYDecimal
+                },
+                lowerBinId: callbackState.strategy.lowerBinId,
+                upperBinId: callbackState.strategy.upperBinId,
+                lowerPriceLimit: callbackState.strategy.lowerPrice,
+                upperPriceLimit: callbackState.strategy.upperPrice,
+                initialLiquidityA: callbackState.totalXAmount.toString(),
+                initialLiquidityB: callbackState.totalYAmount.toString(),
+                userWallet: user.publicKey.toString(),
+                chatId: chatId,
+                sellTokenMint: callbackState.sellTokenMint,
+                sellTokenSymbol: callbackState.sellTokenSymbol,
+                sellTokenAmount: callbackState.sellTokenAmount.toString(),
+                buyTokenMint: callbackState.buyTokenMint,
+                buyTokenSymbol: callbackState.buyTokenSymbol,
+                expectedBuyAmount: callbackState.expectedBuyAmount,
+                entryPrice: callbackState.entryPrice
+              };
+              
+              // 创建仓位
+              const position = positionStorage.createPosition(createParams);
+              console.log(`Created new position with ID: ${position.id}`);
+              
+              // 立即检查新仓位状态，确保发送通知
+              await positionMonitor.checkNewPosition(position.id);
+              
+              // 清理状态
+              state.waitingForCreatingPosition.delete(chatId);
+              
+              // 通知用户仓位创建成功
+              bot.sendMessage(
+                chatId,
+                `✅ *Position created successfully!*\n\nYour position ID: ${position.id}\n\nYou will receive status notifications when changes occur.`,
+                {
+                  parse_mode: "Markdown",
+                  reply_markup: {
+                    inline_keyboard: [
+                      [{ text: "View Position Details", callback_data: `position_${position.id}` }],
+                      [{ text: "🔙 Back to Main Menu", callback_data: "main_menu" }]
+                    ]
+                  }
+                }
+              );
+            } catch (error) {
+              console.error("Error creating position:", error);
+              bot.sendMessage(
+                chatId,
+                `❌ Failed to create position: ${error instanceof Error ? error.message : String(error)}`
+              );
+            }
+          } else if (msg.text.toLowerCase() === "no" || msg.text.toLowerCase() === "cancel" || msg.text === "取消") {
+            // 用户取消创建仓位
+            state.waitingForCreatingPosition.delete(chatId);
+            bot.sendMessage(
+              chatId,
+              "❌ Position creation cancelled.",
+              {
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: "🔙 Back to Main Menu", callback_data: "main_menu" }]
+                  ]
+                }
+              }
+            );
+          }
         }
       }
       

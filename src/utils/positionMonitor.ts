@@ -1,12 +1,10 @@
 import DLMM from '@meteora-ag/dlmm';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { RPC } from '../config';
-import { FilePositionStorage } from '../../models/PositionStore';
-import { Position, PositionStatus } from '../../models/Position';
+import { FilePositionStorage, Position, PositionStatus, FileUserWalletMapStorage } from '../models';
 import taskScheduler, { LogLevel, ScheduledTask } from './scheduler';
 import BN from 'bn.js';
 import { getActiveBin, getBinsBetweenLowerAndUpperBound } from '../api/DLMM';
-import { FileUserWalletMapStorage } from '../../models/UserWalletMap';
 
 // 仓位监控器类
 export class PositionMonitor {
@@ -333,6 +331,13 @@ export class PositionMonitor {
     
     if (!chatId) {
       taskScheduler.log(LogLevel.INFO, `Cannot send notification: No chat ID found for wallet ${userWallet}`);
+      // 增加更详细的日志来追踪问题
+      taskScheduler.log(LogLevel.INFO, `Position details:`, {
+        positionId: position.id,
+        userWallet: position.userWallet,
+        chatId: position.chatId,
+        hasLastStatus: !!position.lastStatus
+      });
       return;
     }
     
@@ -411,6 +416,7 @@ export class PositionMonitor {
       if (!position.lastStatus) {
         message += `✅ *New position is now being monitored*\n\n`;
         shouldNotify = true;
+        taskScheduler.log(LogLevel.INFO, `New position detected, sending notification for position: ${position.id}`);
       }
       
       // 1. 价格范围变化超过阈值
@@ -478,6 +484,8 @@ export class PositionMonitor {
         });
         
         taskScheduler.log(LogLevel.INFO, `Sent notification about position ${position.id} to chat ${chatId}`);
+      } else {
+        taskScheduler.log(LogLevel.INFO, `No notification needed for position ${position.id}`);
       }
     } catch (error) {
       taskScheduler.log(LogLevel.ERROR, `Error sending notification: ${error instanceof Error ? error.message : String(error)}`);
@@ -509,6 +517,27 @@ export class PositionMonitor {
       const errorMsg = error instanceof Error ? error.message : String(error);
       taskScheduler.log(LogLevel.ERROR, `Error getting chatId for wallet: ${wallet}`, { error: errorMsg });
       return null;
+    }
+  }
+
+  /**
+   * 对新创建的仓位进行立即检查
+   * 用于确保新仓位得到立即通知而不必等待定时任务
+   */
+  public async checkNewPosition(positionId: string): Promise<void> {
+    try {
+      const position = await this.positionStorage.getPosition(positionId);
+      if (!position) {
+        taskScheduler.log(LogLevel.ERROR, `Cannot check new position: Position not found with ID ${positionId}`);
+        return;
+      }
+      
+      taskScheduler.log(LogLevel.INFO, `Performing immediate check for new position ${positionId}`);
+      await this.checkPositionStatus(position);
+      return;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      taskScheduler.log(LogLevel.ERROR, `Error checking new position ${positionId}`, { error: errorMsg });
     }
   }
 }

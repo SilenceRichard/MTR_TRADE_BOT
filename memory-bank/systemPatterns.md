@@ -1064,6 +1064,59 @@ class PositionMonitor {
 }
 ```
 
+## 🔔 通知模式
+
+### 仓位监控通知模式
+
+**用途:** 确保用户及时收到仓位状态变更的通知，特别是新创建仓位的初始通知。  
+**实现:** 通过立即检查机制和状态变更检测的组合来触发通知。  
+**关键点:**
+1. 新仓位创建后应立即触发检查，而不仅依赖定时任务
+2. 对每个通知条件进行明确的日志记录
+3. 确保用户ID和仓位关联正确
+
+**示例:** 
+```typescript
+// 仓位创建完成后立即触发检查
+const position = positionStorage.createPosition(createParams);
+await positionMonitor.checkNewPosition(position.id);
+
+// 新仓位检查方法
+public async checkNewPosition(positionId: string): Promise<void> {
+  try {
+    const position = await this.positionStorage.getPosition(positionId);
+    if (!position) {
+      taskScheduler.log(LogLevel.ERROR, `Cannot check new position: Position not found with ID ${positionId}`);
+      return;
+    }
+    
+    taskScheduler.log(LogLevel.INFO, `Performing immediate check for new position ${positionId}`);
+    await this.checkPositionStatus(position);
+    return;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    taskScheduler.log(LogLevel.ERROR, `Error checking new position ${positionId}`, { error: errorMsg });
+  }
+}
+
+// 检查通知条件的逻辑，确保新仓位立即发送通知
+if (!position.lastStatus) {
+  message += `✅ *New position is now being monitored*\n\n`;
+  shouldNotify = true;
+  taskScheduler.log(LogLevel.INFO, `New position detected, sending notification for position: ${position.id}`);
+}
+```
+
+**修复常见问题:**
+1. 缺少立即检查 - 新仓位创建后立即调用`checkNewPosition`
+2. 通知缺失 - 确保`chatId`正确设置和获取
+3. 日志不足 - 添加详细日志追踪通知流程的每个步骤
+
+**注意事项:**
+- 新仓位通知应包含足够的初始状态信息
+- 避免在短时间内发送重复通知
+- 记录通知发送失败的情况并尝试恢复
+
 ---
 
 *最后更新时间: 2023-07-10* 
