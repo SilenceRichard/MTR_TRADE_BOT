@@ -15,6 +15,7 @@ export enum PositionStatus {
  * 代币对信息接口
  */
 export interface TokenPair {
+  id?: string;          // 代币对唯一标识(数据库使用)
   tokenASymbol: string;  // 代币A符号
   tokenBSymbol: string;  // 代币B符号
   tokenAMint: string;    // 代币A mint地址

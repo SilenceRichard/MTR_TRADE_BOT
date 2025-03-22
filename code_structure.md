@@ -55,7 +55,7 @@ Contains data structures and storage implementations:
 Message and command handlers for the Telegram bot:
 
 - `commandHandlers.ts` - Processes bot commands
-- `messageHandlers.ts` - Processes regular messages
+- `messageHandlers.ts` - Processes regular messages and includes custom error handling for Solana transaction errors with automatic retry mechanism for error code 6040
 - `callbackHandlers.ts` - Processes callback queries (buttons)
 
 ### Services (`src/services/`)
@@ -95,4 +95,9 @@ External API integrations:
 
 4. **Dependency Injection**
    - Services and utilities injected into handlers
-   - Improves testability and modularity 
+   - Improves testability and modularity
+   
+5. **Error Handling with Graceful Degradation**
+   - Custom error messages for blockchain errors
+   - Automatic retry with adjusted parameters
+   - Progressive enhancement for transaction reliability 

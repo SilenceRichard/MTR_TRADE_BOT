@@ -317,6 +317,206 @@ class TradingContext {
 }
 ```
 
+### 工厂模式
+
+**用途:** 用于创建不同的存储实现，将创建逻辑与使用逻辑分离。  
+**适用场景:** 当需要基于配置或环境动态选择不同实现时。  
+**实现:**
+```typescript
+// StorageFactory.ts - 存储工厂实现
+import { IPositionStorage } from './PositionStore';
+import { IUserWalletMapStorage } from './UserWalletMap';
+import { FilePositionStorage } from './Position';
+import { FileUserWalletMapStorage } from './UserWalletMap';
+import { PrismaPositionStorage } from './PrismaPositionStorage';
+import { PrismaUserWalletMapStorage } from './PrismaUserWalletMap';
+import * as path from 'path';
+
+export enum StorageType {
+  FILE = 'file',
+  PRISMA = 'prisma'
+}
+
+export class StorageFactory {
+  /**
+   * 获取存储类型，优先从环境变量读取，默认为文件存储
+   */
+  public static getStorageTypeFromEnv(): StorageType {
+    const storageType = process.env.STORAGE_TYPE;
+    if (storageType === 'prisma') {
+      return StorageType.PRISMA;
+    }
+    return StorageType.FILE;
+  }
+
+  /**
+   * 获取Position存储实现
+   */
+  public static getPositionStorage(type: StorageType = StorageType.FILE): IPositionStorage {
+    switch (type) {
+      case StorageType.PRISMA:
+        return new PrismaPositionStorage();
+      case StorageType.FILE:
+      default:
+        const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+        return new FilePositionStorage(dataDir);
+    }
+  }
+
+  /**
+   * 获取UserWalletMap存储实现
+   */
+  public static getUserWalletMapStorage(type: StorageType = StorageType.FILE): IUserWalletMapStorage {
+    switch (type) {
+      case StorageType.PRISMA:
+        return new PrismaUserWalletMapStorage();
+      case StorageType.FILE:
+      default:
+        const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+        return new FileUserWalletMapStorage(dataDir);
+    }
+  }
+}
+```
+
+**使用示例:**
+```typescript
+// 使用工厂获取环境配置的存储实现
+import { StorageFactory } from './models/StorageFactory';
+
+// 自动选择合适的存储实现
+const positionStorage = StorageFactory.getPositionStorage(
+  StorageFactory.getStorageTypeFromEnv()
+);
+
+// 使用特定存储类型
+const userWalletMapStorage = StorageFactory.getUserWalletMapStorage(StorageType.PRISMA);
+
+// 使用存储
+const positions = await positionStorage.getAllPositions();
+```
+
+**注意事项:**
+- 工厂应该处理所有创建相关逻辑，包括依赖配置
+- 对象创建应该隐藏复杂性，提供简单统一的接口
+- 考虑单例模式与工厂结合，避免重复创建实例
+- 明确错误处理，尤其是配置错误或资源不可用情况
+
+### 接口隔离模式
+
+**用途:** 定义存储操作的标准接口，使业务逻辑不依赖具体实现。  
+**适用场景:** 当需要支持多个实现或者为测试提供模拟实现时。  
+**实现:**
+```typescript
+// PositionStore.ts - 位置存储接口
+export interface IPositionStorage {
+  savePosition(position: Position): Promise<void>;
+  getPositionById(positionId: string): Promise<Position | null>;
+  getAllPositions(): Promise<Position[]>;
+  getPositionsByChatId(chatId: string): Promise<Position[]>;
+  deletePosition(positionId: string): Promise<void>;
+}
+
+// UserWalletMap.ts - 用户钱包映射接口
+export interface IUserWalletMapStorage {
+  saveWalletMap(walletMap: UserWalletMap): Promise<void>;
+  getWalletMapByChatId(chatId: string): Promise<UserWalletMap | null>;
+  getAllWalletMaps(): Promise<UserWalletMap[]>;
+  deleteWalletMap(chatId: string): Promise<void>;
+}
+```
+
+**文件实现示例:**
+```typescript
+// 文件存储实现
+export class FilePositionStorage implements IPositionStorage {
+  private dataDir: string;
+  private filePath: string;
+  
+  constructor(dataDir: string) {
+    this.dataDir = dataDir;
+    this.filePath = path.join(dataDir, 'positions.json');
+    this.ensureDataDir();
+  }
+  
+  private ensureDataDir(): void {
+    if (!fs.existsSync(this.dataDir)) {
+      fs.mkdirSync(this.dataDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.filePath)) {
+      fs.writeFileSync(this.filePath, JSON.stringify([]));
+    }
+  }
+  
+  async savePosition(position: Position): Promise<void> {
+    const positions = await this.getAllPositions();
+    const index = positions.findIndex(p => p.id === position.id);
+    
+    if (index >= 0) {
+      positions[index] = position;
+    } else {
+      positions.push(position);
+    }
+    
+    await fs.promises.writeFile(
+      this.filePath, 
+      JSON.stringify(positions, null, 2)
+    );
+  }
+  
+  // 其他方法实现...
+}
+```
+
+**数据库实现示例:**
+```typescript
+// Prisma数据库存储实现
+import { PrismaClient } from '@prisma/client';
+
+export class PrismaPositionStorage implements IPositionStorage {
+  private prisma: PrismaClient;
+  
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+  
+  async savePosition(position: Position): Promise<void> {
+    await this.prisma.position.upsert({
+      where: { id: position.id },
+      update: {
+        tokenA: position.tokenA,
+        tokenB: position.tokenB,
+        lowerTick: position.lowerTick,
+        upperTick: position.upperTick,
+        liquidity: position.liquidity.toString(),
+        chatId: position.chatId,
+        status: position.status,
+        // 其他字段...
+      },
+      create: {
+        id: position.id,
+        tokenA: position.tokenA,
+        tokenB: position.tokenB,
+        lowerTick: position.lowerTick,
+        upperTick: position.upperTick,
+        liquidity: position.liquidity.toString(),
+        chatId: position.chatId,
+        status: position.status,
+        // 其他字段...
+      }
+    });
+  }
+  
+  // 其他方法实现...
+}
+```
+
+**注意事项:**
+- 接口应该定义完整的操作集，但避免过度设计
+- 尽量保持接口稳定，实现可以变化
+- 接口方法应该明确定义返回类型和可能的错误
+- 考虑异步操作的一致性和错误处理
+
 ## 📊 数据模式
 
 ### 数据访问
@@ -1116,6 +1316,186 @@ if (!position.lastStatus) {
 - 新仓位通知应包含足够的初始状态信息
 - 避免在短时间内发送重复通知
 - 记录通知发送失败的情况并尝试恢复
+
+## 📱 消息处理模式
+
+### 状态驱动的消息处理
+
+**用途:** 处理Telegram消息时管理多步骤交互流程。  
+**实现:** 使用状态对象跟踪用户交互状态，根据状态决定处理逻辑。  
+**应用场景:** 创建仓位、执行交换等需要多步骤用户交互的场景。
+
+**示例:**
+```typescript
+// 状态定义
+interface State {
+  waitingForSearchTerm: Set<number>;
+  waitingForAmount: Map<number, { tokenMint: string; sellTokenName: string; balance: number }>;
+  waitingForCreatingPosition: Map<number, { /* 状态数据 */ }>;
+}
+
+// 消息处理
+bot.on("message", async (msg) => {
+  const chatId = msg.chat.id;
+  
+  // 根据不同状态处理消息
+  if (state.waitingForSearchTerm.has(chatId) && msg.text) {
+    // 处理搜索词输入
+    state.waitingForSearchTerm.delete(chatId);
+    await handleUserQuery(searchTerm);
+  }
+  else if (state.waitingForAmount.has(chatId) && msg.text) {
+    // 处理金额输入
+    const amount = parseAmount(msg.text);
+    await processTransaction(amount);
+    state.waitingForAmount.delete(chatId);
+  }
+  else if (state.waitingForCreatingPosition.has(chatId) && msg.text) {
+    // 处理仓位创建确认
+    if (isConfirmation(msg.text)) {
+      await createPosition();
+    } else if (isCancellation(msg.text)) {
+      cancelOperation();
+    }
+    state.waitingForCreatingPosition.delete(chatId);
+  }
+});
+```
+
+**注意事项:**
+- 始终在完成操作后清理状态，避免状态残留
+- 对于每个状态提供清晰的用户指导
+- 实现超时机制，防止状态无限期等待
+- 保证状态操作的原子性，避免状态不一致
+
+### 消息处理器类型
+
+**用途:** 在系统中分类和组织各种消息处理逻辑。  
+**实现:** 将处理逻辑分为三种主要类型：命令处理器、回调处理器和文本消息处理器。
+
+**类型:**
+1. **命令处理器** - 处理以"/"开头的命令消息
+   ```typescript
+   // 命令处理示例
+   bot.onText(/\/start/, (msg) => {
+     bot.sendMessage(msg.chat.id, "欢迎使用MTR Trade Bot!");
+     sendMainMenu(bot, msg.chat.id);
+   });
+   ```
+
+2. **回调处理器** - 处理按钮点击等交互事件
+   ```typescript
+   // 回调处理示例
+   bot.on("callback_query", (callbackQuery) => {
+     const data = callbackQuery.data;
+     
+     if (data === "query_pair") {
+       state.waitingForSearchTerm.add(chatId);
+       promptForSearchTerm();
+     }
+   });
+   ```
+
+3. **文本消息处理器** - 处理普通文本输入，通常与状态结合
+   ```typescript
+   // 文本处理示例 (通常与状态结合)
+   if (state.waitingForAmount.has(chatId) && msg.text) {
+     const amountInfo = state.waitingForAmount.get(chatId);
+     processAmount(msg.text, amountInfo);
+   }
+   ```
+
+## 💼 仓位创建模式
+
+### 参数构建模式
+
+**用途:** 构建创建仓位所需的参数对象。  
+**实现:** 从各种来源（用户输入、系统状态、计算结果）收集数据，构建结构化参数对象。  
+**应用场景:** 在创建新仓位时使用。
+
+**示例:**
+```typescript
+// 从用户交互和系统状态构建参数对象
+const createParams: CreatePositionParams = {
+  poolAddress: state.pairInfo.address,
+  tokenPair: {
+    tokenASymbol: tokenX,
+    tokenBSymbol: tokenY,
+    tokenAMint: state.pairInfo.mint_x,
+    tokenBMint: state.pairInfo.mint_y,
+    tokenADecimals: state.tokenXDecimal,
+    tokenBDecimals: state.tokenYDecimal
+  },
+  lowerBinId: strategy.lowerBinId,
+  upperBinId: strategy.upperBinId,
+  lowerPriceLimit: strategy.lowerPrice,
+  upperPriceLimit: strategy.upperPrice,
+  initialLiquidityA: totalXAmount.toString(),
+  initialLiquidityB: totalYAmount.toString(),
+  userWallet: userPublicKey.toString(),
+  chatId: chatId,
+  // 交易意图信息
+  sellTokenMint: sellTokenMint,
+  sellTokenSymbol: sellTokenSymbol,
+  sellTokenAmount: sellTokenAmount.toString(),
+  buyTokenMint: buyTokenMint,
+  buyTokenSymbol: buyTokenSymbol,
+  expectedBuyAmount: expectedBuyAmount,
+  entryPrice: entryPrice
+};
+
+// 调用存储实现创建仓位
+const position = positionStorage.createPosition(createParams);
+```
+
+### 存储策略模式
+
+**用途:** 提供仓位存储的不同实现方式，允许灵活切换。  
+**实现:** 定义通用接口，实现多种存储策略（文件系统、数据库等）。  
+**应用场景:** 在整个系统中处理仓位数据的存储和检索。
+
+**接口定义:**
+```typescript
+// 存储接口
+export interface PositionStorage {
+  savePosition(position: Position): Promise<void>;
+  getPosition(id: string): Promise<Position | null>;
+  getAllPositions(): Promise<Position[]>;
+  getPositionsByUser(userWallet: string): Promise<Position[]>;
+  updatePosition(id: string, updates: Partial<Position>): Promise<void>;
+  deletePosition(id: string): Promise<void>;
+  createPosition(params: CreatePositionParams): Position; 
+}
+```
+
+**实现示例:**
+```typescript
+// 文件系统实现
+export class FilePositionStorage implements PositionStorage {
+  // ... 实现方法
+  public createPosition(params: CreatePositionParams): Position {
+    const position = this.buildPosition(params);
+    this.positions.set(position.id, position);
+    this.saveData();
+    return position;
+  }
+}
+
+// 数据库实现
+export class PrismaPositionStorage implements PositionStorage {
+  // ... 实现方法
+  public async createPosition(params: CreatePositionParams): Promise<Position> {
+    const position = this.buildPosition(params);
+    await this.savePosition(position);
+    return position;
+  }
+}
+```
+
+**注意事项:**
+- 确保不同实现提供相同的功能和保证
+- 实现应处理自己的错误，并提供一致的错误报告
+- 考虑添加性能监控和日志记录
 
 ---
 

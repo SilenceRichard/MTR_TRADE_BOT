@@ -1,1 +1,31 @@
-{}
+{
+  "bd224e33-73c5-48ba-bb9f-846f815bd2e9": {
+    "id": "bd224e33-73c5-48ba-bb9f-846f815bd2e9",
+    "poolAddress": "5rCf1DM8LjKTw4YqhnoLcngyZYeNnQqztScTogYHAS6",
+    "tokenPair": {
+      "tokenASymbol": "SOL",
+      "tokenBSymbol": "USDC",
+      "tokenAMint": "So11111111111111111111111111111111111111112",
+      "tokenBMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "tokenADecimals": 0,
+      "tokenBDecimals": 0
+    },
+    "lowerBinId": -5123,
+    "upperBinId": -5113,
+    "lowerPriceLimit": 122.44619577496698,
+    "upperPriceLimit": 135.33526901443722,
+    "initialLiquidityA": "10000000",
+    "initialLiquidityB": "0",
+    "sellTokenMint": "So11111111111111111111111111111111111111112",
+    "sellTokenSymbol": "SOL",
+    "sellTokenAmount": "10000000",
+    "buyTokenMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "buyTokenSymbol": "USDC",
+    "entryPrice": 128.89073239476173,
+    "createdAt": "2025-03-22T08:02:52.807Z",
+    "updatedAt": "2025-03-22T08:02:52.807Z",
+    "status": "active",
+    "userWallet": "A2eypp9bthwKNmZRWrzMU2TuAmXJV6VUfhbn1uA2LwEr",
+    "chatId": 6548170895
+  }
+}

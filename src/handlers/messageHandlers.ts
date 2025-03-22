@@ -1,5 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { FilePositionStorage } from "../../models/PositionStore";
 import { FileUserWalletMapStorage } from "../../models/UserWalletMap";
 import { handleUserQuery } from "../queryPools";
@@ -10,6 +10,40 @@ import { getTokenName } from "../utils/format";
 import BN from "bn.js";
 import { sendAndConfirmTransaction } from "@solana/web3.js";
 import { CreatePositionParams } from '../../models/Position';
+import { createOneSidePositions, getActiveBin } from '../api/DLMM';
+import { StrategyType } from "@meteora-ag/dlmm";
+
+/**
+ * Helper function to calculate maximum bin ID based on active bin and token direction
+ * @param activeBin The current active bin
+ * @param fromToken The token direction ("x" or "y")
+ * @returns The maximum bin ID for the strategy
+ */
+const getMaxBinId = (activeBin: number, fromToken: string): number => {
+  if (typeof activeBin !== 'number' || !fromToken) {
+    return 0;
+  }
+  // Fixed step value of 10 as requested
+  const stepValue = 10;
+  const maxBinId = fromToken === "x" ? activeBin + stepValue : activeBin;
+  return maxBinId;
+};
+
+/**
+ * Helper function to calculate minimum bin ID based on active bin and token direction
+ * @param activeBin The current active bin
+ * @param fromToken The token direction ("x" or "y")
+ * @returns The minimum bin ID for the strategy
+ */
+const getMinBinId = (activeBin: number, fromToken: string): number => {
+  if (typeof activeBin !== 'number' || !fromToken) {
+    return 0;
+  }
+  // Fixed step value of 10 as requested
+  const stepValue = 10;
+  const minBinId = fromToken === "x" ? activeBin : activeBin - stepValue;
+  return minBinId;
+};
 
 /**
  * Initialize message handlers for the Telegram bot
@@ -127,41 +161,56 @@ export const initMessageHandlers = (
             const outToken = swapXtoY 
               ? new PublicKey(state.pairInfo.mint_y)
               : new PublicKey(state.pairInfo.mint_x);
+              
+            // 创建一个新的位置密钥对，用于创建仓位
+            const positionKeyPair = Keypair.generate();
             
-            // Execute the swap
-            const swapTx = await state.dlmmPool.swap({
-              inToken,
-              binArraysPubkey: swapQuote.binArraysPubkey,
-              inAmount: amountBN,
-              lbPair: state.dlmmPool.pubkey,
-              user: user.publicKey,
-              minOutAmount: swapQuote.minOutAmount,
-              outToken,
+            // 获取当前活跃bin以计算合适的仓位范围
+            const activeBin = await getActiveBin(state.dlmmPool!);
+            const currentPrice = parseFloat(activeBin.pricePerToken.toString());
+            const actBin = activeBin.binId;
+            
+            // 确定fromToken，用于计算bin范围
+            const fromToken = swapXtoY ? "x" : "y";
+            
+            // 使用更新的策略结构
+            const strategy = {
+              strategyType: StrategyType.SpotImBalanced,
+              minBinId: getMinBinId(actBin, fromToken),
+              maxBinId: getMaxBinId(actBin, fromToken),
+            };
+            
+            // 根据卖出的代币类型计算初始流动性
+            const totalXAmount = swapXtoY ? amountBN : new BN(0);
+            const totalYAmount = swapXtoY ? new BN(0) : amountBN;
+            
+            // 设置仓位创建所需的所有参数
+            state.waitingForCreatingPosition.set(chatId, {
+              positionKeyPair,
+              totalXAmount,
+              totalYAmount,
+              strategy,
+              sellTokenMint: inToken.toString(),
+              sellTokenSymbol: amountInfo.sellTokenName,
+              sellTokenAmount: amountBN,
+              buyTokenMint: outToken.toString(),
+              buyTokenSymbol: buyTokenName,
+              expectedBuyAmount: estimatedReceiveAmount.toString(),
+              entryPrice: exchangeRate
             });
             
-            // Send and confirm the transaction
-            const swapTxHash = await sendAndConfirmTransaction(
-              connection, 
-              swapTx, 
-              [user],
-              { skipPreflight: false, preflightCommitment: "processed" }
-            );
-            
-            // Update message with success information
+            // 请求用户确认创建仓位
             await bot.editMessageText(
-              `✅ *Swap Successful*\n\n` +
-              `You swapped *${amount} ${amountInfo.sellTokenName}*\n` +
-              `You received approximately *${estimatedReceiveAmount.toFixed(6)} ${buyTokenName}*\n\n` +
-              `Transaction hash: \`${swapTxHash}\``,
+              `✅ *Create Position Confirmation*\n\n` +
+              `You are about to create a position with:\n` +
+              `- *${amount} ${amountInfo.sellTokenName}*\n` +
+              `- Current price: ${currentPrice.toFixed(4)}\n` +
+              `- Bin range: ${strategy.minBinId} - ${strategy.maxBinId}\n\n` +
+              `Please confirm by replying with "yes" or "confirm" or cancel with "no" or "cancel".`,
               {
                 chat_id: chatId,
                 message_id: processingMessage.message_id,
-                parse_mode: "Markdown",
-                reply_markup: {
-                  inline_keyboard: [
-                    [{ text: "🔙 Back to Main Menu", callback_data: "main_menu" }]
-                  ]
-                }
+                parse_mode: "Markdown"
               }
             );
             
@@ -202,7 +251,7 @@ export const initMessageHandlers = (
       if (state.waitingForCreatingPosition.has(chatId) && msg.text) {
         const callbackState = state.waitingForCreatingPosition.get(chatId);
         
-        if (callbackState?.positionKeyPair && callbackState.totalXAmount && callbackState.totalYAmount && callbackState.strategy) {
+        if (callbackState?.positionKeyPair && callbackState.strategy) {
           // 用户确认创建仓位
           if (msg.text.toLowerCase() === "yes" || msg.text.toLowerCase() === "confirm" || msg.text === "确认") {
             try {
@@ -224,6 +273,61 @@ export const initMessageHandlers = (
                 tokenYStr = 'TokenY';
               }
               
+              // 使用已保存在state中的策略参数和流动性数据
+              // 这样确保用户确认的是什么，我们就执行什么
+              const strategy = callbackState.strategy;
+              const totalXAmount = callbackState.totalXAmount;
+              const totalYAmount = callbackState.totalYAmount;
+              
+              const processingMsg = await bot.sendMessage(
+                chatId,
+                "🔄 Executing on-chain transaction to create your position...",
+                { parse_mode: "Markdown" }
+              );
+              
+              // 创建仓位交易
+              const txResult = await createOneSidePositions(state.dlmmPool!, {
+                connection,
+                positionPubKey: callbackState.positionKeyPair.publicKey,
+                user: user.publicKey,
+                totalXAmount,
+                totalYAmount,
+                strategy
+              });
+              
+              // 签名并发送交易
+              txResult.opTx.sign([user, callbackState.positionKeyPair]);
+              
+              // 发送交易到链上
+              const txId = await connection.sendTransaction(txResult.opTx, {
+                maxRetries: 3,
+                skipPreflight: false
+              });
+              
+              // 等待交易确认
+              await connection.confirmTransaction({
+                signature: txId,
+                blockhash: txResult.blockhash,
+                lastValidBlockHeight: txResult.lastValidBlockHeight
+              });
+              
+              // 更新处理消息，告知用户交易已确认
+              await bot.editMessageText(
+                `✅ Transaction confirmed!\nTransaction ID: \`${txId}\`\n\nNow saving position details...`,
+                {
+                  chat_id: chatId,
+                  message_id: processingMsg.message_id,
+                  parse_mode: "Markdown"
+                }
+              );
+              
+              // 计算价格范围，仅用于记录
+              const activeBin = await getActiveBin(state.dlmmPool!);
+              const currentPrice = parseFloat(activeBin.pricePerToken.toString());
+              const pricePadding = 0.05; // 5%的价格缓冲区
+              const lowerPrice = currentPrice * (1 - pricePadding);
+              const upperPrice = currentPrice * (1 + pricePadding);
+              
               // 创建新仓位参数
               const createParams: CreatePositionParams = {
                 poolAddress: state.pairInfo.address,
@@ -235,12 +339,12 @@ export const initMessageHandlers = (
                   tokenADecimals: state.tokenXDecimal,
                   tokenBDecimals: state.tokenYDecimal
                 },
-                lowerBinId: callbackState.strategy.lowerBinId,
-                upperBinId: callbackState.strategy.upperBinId,
-                lowerPriceLimit: callbackState.strategy.lowerPrice,
-                upperPriceLimit: callbackState.strategy.upperPrice,
-                initialLiquidityA: callbackState.totalXAmount.toString(),
-                initialLiquidityB: callbackState.totalYAmount.toString(),
+                lowerBinId: strategy.minBinId,
+                upperBinId: strategy.maxBinId,
+                lowerPriceLimit: lowerPrice,
+                upperPriceLimit: upperPrice,
+                initialLiquidityA: totalXAmount.toString(),
+                initialLiquidityB: totalYAmount.toString(),
                 userWallet: user.publicKey.toString(),
                 chatId: chatId,
                 sellTokenMint: callbackState.sellTokenMint,
@@ -252,9 +356,15 @@ export const initMessageHandlers = (
                 entryPrice: callbackState.entryPrice
               };
               
-              // 创建仓位
+              // 记录额外信息到日志，这些不需要存储在仓位参数中
+              console.log('Additional position data:', {
+                positionAddress: callbackState.positionKeyPair.publicKey.toString(),
+                transactionId: txId
+              });
+              
+              // 创建仓位记录
               const position = positionStorage.createPosition(createParams);
-              console.log(`Created new position with ID: ${position.id}`);
+              console.log(`Created new position with ID: ${position.id} and address ${callbackState.positionKeyPair.publicKey.toString()}`);
               
               // 立即检查新仓位状态，确保发送通知
               await positionMonitor.checkNewPosition(position.id);
@@ -265,7 +375,12 @@ export const initMessageHandlers = (
               // 通知用户仓位创建成功
               bot.sendMessage(
                 chatId,
-                `✅ *Position created successfully!*\n\nYour position ID: ${position.id}\n\nYou will receive status notifications when changes occur.`,
+                `✅ *Position created successfully!*\n\n` +
+                `Your position ID: \`${position.id}\`\n` +
+                `Position Address: \`${callbackState.positionKeyPair.publicKey.toString()}\`\n` +
+                `Transaction ID: \`${txId}\`\n\n` +
+                `Range: ${strategy.minBinId} - ${strategy.maxBinId}\n` +
+                `You will receive status notifications when changes occur.`,
                 {
                   parse_mode: "Markdown",
                   reply_markup: {
@@ -278,9 +393,197 @@ export const initMessageHandlers = (
               );
             } catch (error) {
               console.error("Error creating position:", error);
+              
+              // Improve error message for specific error codes
+              let errorMessage = error instanceof Error ? error.message : String(error);
+              
+              // Check for Solana custom error code 6040 (often indicates insufficient funds)
+              if (errorMessage.includes('"Custom":6040')) {
+                errorMessage = "创建仓位失败 - 可能是流动性设置不合理。正在尝试使用更宽的价格范围...";
+                
+                // 通知用户我们正在尝试调整参数
+                const retryMsg = await bot.sendMessage(
+                  chatId,
+                  "⏳ 第一次尝试失败，正在使用更宽的价格范围重试...",
+                  { parse_mode: "Markdown" }
+                );
+                
+                try {
+                  // 获取原始仓位参数
+                  const originalState = state.waitingForCreatingPosition.get(chatId);
+                  
+                  if (originalState && originalState.strategy) {
+                    // 使用更宽的价格范围和bin范围
+                    const wideBinPadding = 20; // 使用更宽的bin范围
+                    
+                    // 复制原始策略并调整
+                    const adjustedStrategy = {...originalState.strategy};
+                    
+                    // 检查是否有minBinId和maxBinId
+                    if (typeof adjustedStrategy.minBinId === 'number' && typeof adjustedStrategy.maxBinId === 'number') {
+                      const originalLower = adjustedStrategy.minBinId;
+                      const originalUpper = adjustedStrategy.maxBinId;
+                      const binRange = originalUpper - originalLower;
+                      
+                      // 扩大bin范围
+                      adjustedStrategy.minBinId = originalLower - Math.floor(wideBinPadding / 2);
+                      adjustedStrategy.maxBinId = originalUpper + Math.floor(wideBinPadding / 2);
+                      
+                      console.log(`尝试扩大bin范围: 原始[${originalLower}-${originalUpper}], 新范围[${adjustedStrategy.minBinId}-${adjustedStrategy.maxBinId}]`);
+                      
+                      // 更新状态
+                      state.waitingForCreatingPosition.set(chatId, {
+                        ...originalState,
+                        strategy: adjustedStrategy
+                      });
+                      
+                      // 更新消息
+                      await bot.editMessageText(
+                        "🔄 正在尝试使用更宽的价格范围创建仓位...",
+                        {
+                          chat_id: chatId,
+                          message_id: retryMsg.message_id,
+                          parse_mode: "Markdown"
+                        }
+                      );
+                      
+                      // 重新创建仓位交易
+                      const txResult = await createOneSidePositions(state.dlmmPool!, {
+                        connection,
+                        positionPubKey: originalState.positionKeyPair.publicKey,
+                        user: user.publicKey,
+                        totalXAmount: originalState.totalXAmount,
+                        totalYAmount: originalState.totalYAmount,
+                        strategy: adjustedStrategy
+                      });
+                      
+                      // 签名并发送交易
+                      txResult.opTx.sign([user, originalState.positionKeyPair]);
+                      
+                      // 发送交易到链上
+                      const txId = await connection.sendTransaction(txResult.opTx, {
+                        maxRetries: 3,
+                        skipPreflight: false
+                      });
+                      
+                      // 等待交易确认
+                      await connection.confirmTransaction({
+                        signature: txId,
+                        blockhash: txResult.blockhash,
+                        lastValidBlockHeight: txResult.lastValidBlockHeight
+                      });
+                      
+                      // 更新消息，告知用户交易已确认
+                      await bot.editMessageText(
+                        "✅ 重试成功！交易已确认，正在保存仓位...",
+                        {
+                          chat_id: chatId,
+                          message_id: retryMsg.message_id,
+                          parse_mode: "Markdown"
+                        }
+                      );
+                      
+                      // 获取代币对信息
+                      let tokenXStr: string;
+                      let tokenYStr: string;
+                      
+                      if (typeof state.pairInfo.mint_x === 'string') {
+                        // 如果是字符串，尝试获取代币名称
+                        const tokenInfo = getTokenName(state.pairInfo);
+                        tokenXStr = tokenInfo.tokenX || 'TokenX';
+                        tokenYStr = tokenInfo.tokenY || 'TokenY';
+                      } else {
+                        // 默认值
+                        tokenXStr = 'TokenX';
+                        tokenYStr = 'TokenY';
+                      }
+                      
+                      // 计算价格范围，仅用于记录
+                      const activeBin = await getActiveBin(state.dlmmPool!);
+                      const currentPrice = parseFloat(activeBin.pricePerToken.toString());
+                      const pricePadding = 0.05; // 5%的价格缓冲区
+                      const lowerPrice = currentPrice * (1 - pricePadding);
+                      const upperPrice = currentPrice * (1 + pricePadding);
+                      
+                      // 创建新仓位参数 - 使用与之前相同的逻辑
+                      const createParams: CreatePositionParams = {
+                        poolAddress: state.pairInfo.address,
+                        tokenPair: {
+                          tokenASymbol: tokenXStr,
+                          tokenBSymbol: tokenYStr,
+                          tokenAMint: state.pairInfo.mint_x,
+                          tokenBMint: state.pairInfo.mint_y,
+                          tokenADecimals: state.tokenXDecimal,
+                          tokenBDecimals: state.tokenYDecimal
+                        },
+                        lowerBinId: adjustedStrategy.minBinId,
+                        upperBinId: adjustedStrategy.maxBinId,
+                        lowerPriceLimit: lowerPrice,
+                        upperPriceLimit: upperPrice,
+                        initialLiquidityA: originalState.totalXAmount.toString(),
+                        initialLiquidityB: originalState.totalYAmount.toString(),
+                        userWallet: user.publicKey.toString(),
+                        chatId: chatId,
+                        sellTokenMint: originalState.sellTokenMint,
+                        sellTokenSymbol: originalState.sellTokenSymbol,
+                        sellTokenAmount: originalState.sellTokenAmount.toString(),
+                        buyTokenMint: originalState.buyTokenMint,
+                        buyTokenSymbol: originalState.buyTokenSymbol,
+                        expectedBuyAmount: originalState.expectedBuyAmount,
+                        entryPrice: originalState.entryPrice
+                      };
+                      
+                      // 创建仓位记录
+                      const position = positionStorage.createPosition(createParams);
+                      console.log(`Created new position with ID: ${position.id} and address ${originalState.positionKeyPair.publicKey.toString()}`);
+                      
+                      // 立即检查新仓位状态，确保发送通知
+                      await positionMonitor.checkNewPosition(position.id);
+                      
+                      // 清理状态
+                      state.waitingForCreatingPosition.delete(chatId);
+                      
+                      // 通知用户仓位创建成功
+                      bot.sendMessage(
+                        chatId,
+                        `✅ *Position created successfully after retry!*\n\n` +
+                        `Your position ID: \`${position.id}\`\n` +
+                        `Position Address: \`${originalState.positionKeyPair.publicKey.toString()}\`\n` +
+                        `Transaction ID: \`${txId}\`\n\n` +
+                        `Range: ${adjustedStrategy.minBinId} - ${adjustedStrategy.maxBinId} (wider range)\n` +
+                        `You will receive status notifications when changes occur.`,
+                        {
+                          parse_mode: "Markdown",
+                          reply_markup: {
+                            inline_keyboard: [
+                              [{ text: "View Position Details", callback_data: `position_${position.id}` }],
+                              [{ text: "🔙 Back to Main Menu", callback_data: "main_menu" }]
+                            ]
+                          }
+                        }
+                      );
+                      
+                      // 成功重试后直接返回，不显示错误
+                      return;
+                    }
+                  }
+                } catch (retryError) {
+                  console.error("Error during retry:", retryError);
+                  // 重试失败，继续显示原始错误
+                  errorMessage = "创建仓位失败 - 尝试调整范围后仍然失败。请稍后重试或使用较小的金额。";
+                }
+              }
+              
               bot.sendMessage(
                 chatId,
-                `❌ Failed to create position: ${error instanceof Error ? error.message : String(error)}`
+                `❌ Failed to create position: ${errorMessage}`,
+                {
+                  reply_markup: {
+                    inline_keyboard: [
+                      [{ text: "🔙 Back to Main Menu", callback_data: "main_menu" }]
+                    ]
+                  }
+                }
               );
             }
           } else if (msg.text.toLowerCase() === "no" || msg.text.toLowerCase() === "cancel" || msg.text === "取消") {

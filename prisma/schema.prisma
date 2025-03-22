@@ -1,0 +1,138 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Position Status Enum
+enum PositionStatus {
+  ACTIVE
+  CLOSED
+  PENDING
+  ERROR
+}
+
+// Token Pair related to a position
+model TokenPair {
+  id            String     @id @default(uuid())
+  tokenASymbol  String
+  tokenBSymbol  String
+  tokenAMint    String
+  tokenBMint    String
+  tokenADecimals Int
+  tokenBDecimals Int
+  positions     Position[]
+}
+
+// Position model
+model Position {
+  id                String         @id @default(uuid())
+  poolAddress       String
+  
+  // Position parameters
+  lowerBinId        Int
+  upperBinId        Int
+  initialLiquidityA String         // BN values stored as strings
+  initialLiquidityB String         // BN values stored as strings
+  
+  // Price range information
+  lowerPriceLimit   Float
+  upperPriceLimit   Float
+  
+  // Trading intent information
+  sellTokenMint     String?
+  sellTokenSymbol   String?
+  sellTokenAmount   String?        // BN value stored as string
+  buyTokenMint      String?
+  buyTokenSymbol    String?
+  expectedBuyAmount String?        // BN value stored as string
+  actualBuyAmount   String?        // BN value stored as string
+  entryPrice        Float?
+  
+  // Timestamps
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  closedAt          DateTime?
+  
+  // Status
+  status            PositionStatus @default(ACTIVE)
+  
+  // Relationships
+  userWallet        String
+  chatId            Int?
+  tokenPairId       String
+  tokenPair         TokenPair      @relation(fields: [tokenPairId], references: [id])
+  histories         PositionHistory[]
+  lastStatusId      String?
+  lastStatus        PositionLastStatus? @relation(fields: [lastStatusId], references: [id])
+  
+  // Additional info
+  positionNFT       String?
+  fee               Float?
+  notes             String?
+}
+
+// Position Last Status model
+model PositionLastStatus {
+  id                String      @id @default(uuid())
+  activeBin         Int
+  currentPrice      Float
+  binInRange        Boolean
+  timestamp         DateTime
+  currentLowerPrice Float?
+  currentUpperPrice Float?
+  liquidityX        String?
+  liquidityY        String?
+  
+  // Fees
+  pendingFeesX      String?
+  pendingFeesY      String?
+  totalClaimedFeesX String?
+  totalClaimedFeesY String?
+  
+  // Rewards
+  rewardOne         String?
+  rewardTwo         String?
+  
+  lastUpdatedAt     String?
+  positions         Position[]
+}
+
+// Position History model
+model PositionHistory {
+  id             String   @id @default(uuid())
+  positionId     String
+  position       Position @relation(fields: [positionId], references: [id])
+  timestamp      DateTime
+  eventType      String
+  
+  // Snapshot data
+  liquidityA     String?  // BN value stored as string
+  liquidityB     String?  // BN value stored as string
+  valueUSD       Float?
+  priceAtEvent   Float?
+  
+  // Metadata stored as JSON
+  metadataJson   String?  // JSON string of metadata
+}
+
+// User Wallet Mapping model
+model UserWalletMapping {
+  chatId            Int       @id
+  walletAddresses   String    // Stored as JSON array
+  primaryWallet     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastActive        DateTime?
+  name              String?
+  telegram_username String?
+}

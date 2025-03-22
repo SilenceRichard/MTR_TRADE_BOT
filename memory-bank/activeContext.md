@@ -5,73 +5,68 @@
 ## 🎯 当前任务
 
 **主要任务:**
-- 实现并测试MTR Trade Bot的自动化测试框架
-- 完善仓位监控系统的测试覆盖率
-- 将仓位监控组件与整个系统集成
+- 错误排查和根因分析
+- 优化仓位创建流程中的错误处理
+- 解决用户交互体验和确认过程中的问题
+- 诊断仓位创建在边缘情况下的稳定性
 
 **次要任务:**
-- 设计更强大的测试模拟层，以减少对实际网络连接的依赖
-- 优化测试环境配置以提高测试效率
+- 分析潜在的性能瓶颈
+- 检查错误处理和恢复机制
+- 记录发现的问题模式和解决方案
+- 提出改进建议以提高系统的稳定性和可靠性
 
 ## 🎯 当前工作模式
 
-**当前角色:** 编码工程师  
+**当前角色:** 调试工程师  
 **主要关注点:** 
-- 功能实现和代码编写
-- 代码修改和优化
-- 代码重构和改进
-- 测试实现和代码质量
+- 问题排查和根因分析
+- 错误调查和修复
+- 性能问题诊断
+- 系统状态分析
 
 **工作重点:**
-- 按照项目规范实现功能
-- 确保代码可测试性和可维护性
-- 优化现有代码结构和性能
-- 协助完成测试用例的开发
+- 系统地分析仓位创建流程中的潜在问题
+- 检查状态管理机制中的漏洞和边缘情况
+- 验证不同存储实现的兼容性和错误处理
+- 改进消息处理和用户交互的稳定性和可靠性
 
 ## 💡 最近讨论
 
-- Jest测试框架的采用及配置已完成
-- 仓位监控功能的基本单元测试已通过，验证了核心功能的实现
-- 集成和端到端测试需要更完善的模拟层
-- 测试覆盖率需要进一步提高，尤其是PositionStore和UserWalletMap组件
+- 系统通过三种主要的交互方式响应用户：命令消息、回调查询消息和普通文本消息
+- 仓位创建主要在`messageHandlers.ts`文件中实现，利用回调数据和用户确认
+- 系统使用`state`对象来管理会话状态，包括等待用户输入的各种标志
+- 存在两种存储实现：基于文件系统的`FilePositionStorage`和基于数据库的`PrismaPositionStorage`
+- 创建仓位的参数通过`CreatePositionParams`接口定义，包含池地址、代币对、价格范围等信息
 
 ## ⚠️ 需要解决的问题
 
-- ~~确定如何有效模拟Meteora DLMM SDK的响应~~ [已解决]
-- ~~设计不依赖实际网络连接的测试场景~~ [已解决]
-- 提高代码覆盖率，特别是条件分支和错误处理部分
-- 建立测试数据生成机制，确保测试的一致性和可重复性
-- 修复新创建仓位时通知不发送的问题 [已解决]
+- 状态管理可能导致的用户会话卡住或状态不一致
+- 错误情况下的恢复机制不完善
+- 用户取消操作后可能存在的状态清理不彻底
+- 验证数据输入和参数构建过程中的错误处理
+- 两种存储实现之间的兼容性和一致性问题
 
 ## 📝 最近更新
 
-- 完成了项目文件结构重组，将模型文件移动到src/models目录
-- 更新了模型导入路径，使用更简洁的导入方式
-- 创建了代码结构文档(code_structure.md)，详细说明项目组织结构
-- 添加了src/models/README.md，记录模型目录的使用方法
-- 修复了创建仓位后没有发送初始通知的问题，增加了`checkNewPosition`方法直接对新创建的仓位进行检查
-- 改进了`checkForNotifications`方法的日志记录，增加了仓位详情显示
-- 更新了消息处理器中仓位创建后的逻辑，确保新仓位能立即被检查而不必等待定时任务
-- 完成了PositionMonitor类的单元测试，确认了startMonitoring、stopMonitoring和checkAllActivePositions方法的功能
-- 实现了仓位状态变化的测试，验证了通知系统的工作机制
-- 设置了集成测试环境，测试仓位监控的完整生命周期
-- 初步配置了端到端测试，但暂时跳过执行，等待更完善的测试环境
+- 找到了仓位创建的核心逻辑，位于`messageHandlers.ts`、`PositionStore.ts`和`PrismaPositionStorage.ts`
+- 梳理了所有Telegram消息类型与系统操作的对应关系
+- 分析了创建仓位的完整流程，从用户确认到存储实现
+- 理解了系统如何处理不同类型的消息（命令、回调、文本）
+- 识别了用于处理仓位创建的状态管理机制
+- 切换到调试模式，准备开始问题排查和优化工作
 
 ## 🗂️ 相关文件
 
-- `src/models/Position.ts`: 仓位数据模型定义
-- `src/models/PositionStore.ts`: 仓位数据存储实现
-- `src/models/UserWalletMap.ts`: 用户钱包映射实现 
-- `src/models/index.ts`: 统一模型导出
-- `code_structure.md`: 项目架构文档
-- `src/utils/positionMonitor.ts`: 仓位监控实现，已更新导入路径
-- `src/handlers/messageHandlers.ts`: 消息处理器，已更新创建仓位的逻辑
-- `tests/utils/positionMonitor.test.ts`: 仓位监控单元测试
-- `tests/utils/positionStatusMonitoring.test.ts`: 仓位状态检查测试
-- `tests/integration/positionMonitorIntegration.test.ts`: 监控系统集成测试
-- `tests/e2e/monitoringSystem.test.ts`: 监控系统端到端测试
-- `tests/mocks/dlmm.mock.ts`: Meteora DLMM SDK的模拟实现
+- `src/handlers/messageHandlers.ts`: 处理用户消息，包括仓位创建确认
+- `src/handlers/callbackHandlers.ts`: 处理回调查询，触发仓位创建流程
+- `src/handlers/commandHandlers.ts`: 处理命令消息
+- `src/models/Position.ts`: 定义仓位数据模型和创建参数接口
+- `src/models/PositionStore.ts`: 基于文件系统的仓位存储实现
+- `src/models/PrismaPositionStorage.ts`: 基于数据库的仓位存储实现
+- `src/services/positionService.ts`: 提供仓位相关服务
+- `src/utils/positionMonitor.ts`: 监控仓位状态的工具
 
 ---
 
-*最后更新时间: 2024-03-24* 
+*最后更新时间: 2024-03-26* 
