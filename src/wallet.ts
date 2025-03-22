@@ -64,4 +64,4 @@ export async function getWallet(): Promise<Keypair> {
     console.error("获取钱包失败:", error);
     throw error;
   }
-}
+} 

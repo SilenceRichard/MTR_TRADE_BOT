@@ -1,12 +1,12 @@
 import DLMM from '@meteora-ag/dlmm';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { RPC } from '../config';
-import { FilePositionStorage } from '../models/PositionStore';
-import { Position, PositionStatus } from '../models/Position';
+import { FilePositionStorage } from '../../models/PositionStore';
+import { Position, PositionStatus } from '../../models/Position';
 import taskScheduler, { LogLevel, ScheduledTask } from './scheduler';
 import BN from 'bn.js';
 import { getActiveBin, getBinsBetweenLowerAndUpperBound } from '../api/DLMM';
-import { FileUserWalletMapStorage } from '../models/UserWalletMap';
+import { FileUserWalletMapStorage } from '../../models/UserWalletMap';
 
 // 仓位监控器类
 export class PositionMonitor {
@@ -151,18 +151,67 @@ export class PositionMonitor {
     
     // 获取当前活跃bin
     const activeBin = await getActiveBin(dlmmPool);
-    
-    // 判断当前仓位的bin范围与活跃bin的关系
-    // 由于类型问题，先进行数值转换
     const activeBinId = activeBin.binId;
-    const binInRange = activeBinId >= position.lowerBinId && activeBinId <= position.upperBinId;
-    
-    // 获取价格信息
     const currentPrice = Number(activeBin.pricePerToken);
     
-    // 获取bin范围内的信息
-    const sellingX = position.sellTokenMint === position.tokenPair.tokenAMint;
+    // 判断当前仓位的bin范围与活跃bin的关系
+    const binInRange = activeBinId >= position.lowerBinId && activeBinId <= position.upperBinId;
+    
     try {
+      // 获取位置数据
+      // 使用DLMM.getPositionsByUserAndLbPair获取链上仓位状态信息
+      const userWallet = new PublicKey(position.userWallet);
+      const result = await dlmmPool.getPositionsByUserAndLbPair(userWallet);
+      const userPositions = result.userPositions || [];
+      
+      // 变量初始化
+      let positionData = null;
+      let liquidityX = null;
+      let liquidityY = null;
+      let fees = null;
+      
+      // 在用户的仓位中查找匹配当前仓位bin范围的仓位
+      if (userPositions && userPositions.length > 0) {
+        for (const pos of userPositions) {
+          if (pos.positionData && 
+              pos.positionData.lowerBinId === position.lowerBinId && 
+              pos.positionData.upperBinId === position.upperBinId) {
+            positionData = pos;
+            
+            // 获取流动性信息
+            liquidityX = pos.positionData.totalXAmount;
+            liquidityY = pos.positionData.totalYAmount;
+            
+            // 获取手续费信息
+            fees = {
+              pendingFeesX: pos.positionData.feeX,
+              pendingFeesY: pos.positionData.feeY,
+              totalClaimedFeesX: pos.positionData.totalClaimedFeeXAmount,
+              totalClaimedFeesY: pos.positionData.totalClaimedFeeYAmount
+            };
+            
+            // 记录链上仓位数据
+            taskScheduler.log(LogLevel.INFO, `Retrieved on-chain position data for ${position.id}`, {
+              positionId: position.id,
+              binRange: `${pos.positionData.lowerBinId} - ${pos.positionData.upperBinId}`,
+              lastUpdatedAt: pos.positionData.lastUpdatedAt.toString()
+            });
+            
+            break; // 找到匹配的仓位后退出循环
+          }
+        }
+      }
+      
+      if (!positionData) {
+        taskScheduler.log(LogLevel.WARNING, `No matching on-chain position found for position ${position.id}`, {
+          userWallet: position.userWallet,
+          lowerBinId: position.lowerBinId,
+          upperBinId: position.upperBinId
+        });
+      }
+      
+      // 获取bin范围内的信息
+      const sellingX = position.sellTokenMint === position.tokenPair.tokenAMint;
       const rangeBins = await getBinsBetweenLowerAndUpperBound({
         dlmmPool,
         actBin: activeBin,
@@ -170,8 +219,8 @@ export class PositionMonitor {
       });
       
       // 获取当前的价格范围信息
-      const currentLowerPrice = Number(rangeBins.bins[0].pricePerToken);
-      const currentUpperPrice = Number(rangeBins.bins[rangeBins.bins.length - 1].pricePerToken);
+      const currentLowerPrice = Number(rangeBins.bins[0]?.pricePerToken) || 0;
+      const currentUpperPrice = Number(rangeBins.bins[rangeBins.bins.length - 1]?.pricePerToken) || 0;
       
       // 计算用户仓位价格范围是否变化
       const priceRangeChanged = 
@@ -186,7 +235,19 @@ export class PositionMonitor {
         rangeBins: rangeBins.bins.length > 0 ? rangeBins.bins : null,
         currentLowerPrice,
         currentUpperPrice,
-        priceRangeChanged
+        priceRangeChanged,
+        // 添加链上数据
+        onChainPosition: positionData,
+        liquidityX,
+        liquidityY,
+        fees,
+        // 添加额外的链上数据
+        lastUpdatedAt: positionData?.positionData?.lastUpdatedAt,
+        positionBinData: positionData?.positionData?.positionBinData,
+        rewards: positionData?.positionData ? {
+          rewardOne: positionData.positionData.rewardOne,
+          rewardTwo: positionData.positionData.rewardTwo
+        } : null
       };
     } catch (error) {
       // 如果获取范围bins失败，仍然返回基本信息
@@ -205,18 +266,34 @@ export class PositionMonitor {
    */
   private async savePositionStatus(position: Position, status: any): Promise<void> {
     // 创建历史记录
+    const historyMetadata: Record<string, any> = {
+      activeBin: status.activeBin,
+      binInRange: status.binInRange,
+      currentLowerPrice: status.currentLowerPrice,
+      currentUpperPrice: status.currentUpperPrice
+    };
+    
+    // 如果有链上数据，添加到历史记录中
+    if (status.onChainPosition) {
+      historyMetadata.onChainData = {
+        liquidityX: status.liquidityX,
+        liquidityY: status.liquidityY,
+        fees: status.fees,
+        rewards: status.rewards,
+        lastUpdatedAt: status.lastUpdatedAt ? status.lastUpdatedAt.toString() : null,
+        positionBinData: status.positionBinData
+      };
+    }
+    
     await this.positionStorage.savePositionHistory({
       id: `history_${Date.now()}`,
       positionId: position.id,
       timestamp: new Date(),
       eventType: 'status_check',
       priceAtEvent: status.currentPrice,
-      metadata: {
-        activeBin: status.activeBin,
-        binInRange: status.binInRange,
-        currentLowerPrice: status.currentLowerPrice,
-        currentUpperPrice: status.currentUpperPrice
-      }
+      liquidityA: status.liquidityX ? new BN(status.liquidityX) : undefined,
+      liquidityB: status.liquidityY ? new BN(status.liquidityY) : undefined,
+      metadata: historyMetadata
     });
     
     // 更新仓位的lastStatus信息
@@ -225,21 +302,17 @@ export class PositionMonitor {
         activeBin: status.activeBin,
         currentPrice: status.currentPrice,
         binInRange: status.binInRange,
-        timestamp: new Date()
-      }
-    };
-    
-    // 如果当前价格范围信息可用，也保存它们
-    if (status.currentLowerPrice !== undefined && status.currentUpperPrice !== undefined) {
-      updates.lastStatus = {
-        activeBin: status.activeBin,
-        currentPrice: status.currentPrice,
-        binInRange: status.binInRange,
         timestamp: new Date(),
         currentLowerPrice: status.currentLowerPrice,
-        currentUpperPrice: status.currentUpperPrice
-      };
-    }
+        currentUpperPrice: status.currentUpperPrice,
+        // 添加链上数据到lastStatus
+        liquidityX: status.liquidityX,
+        liquidityY: status.liquidityY,
+        fees: status.fees,
+        rewards: status.rewards,
+        lastUpdatedAt: status.lastUpdatedAt ? status.lastUpdatedAt.toString() : null
+      }
+    };
     
     await this.positionStorage.updatePosition(position.id, updates);
   }
@@ -281,10 +354,64 @@ export class PositionMonitor {
       
       message += `*In Range*: ${status.binInRange ? '✅' : '❌'}\n\n`;
       
+      // 如果有链上仓位数据，添加到消息中
+      if (status.liquidityX || status.liquidityY) {
+        message += `*Current Liquidity*:\n`;
+        if (status.liquidityX) {
+          message += `${position.tokenPair.tokenASymbol}: ${status.liquidityX}\n`;
+        }
+        if (status.liquidityY) {
+          message += `${position.tokenPair.tokenBSymbol}: ${status.liquidityY}\n`;
+        }
+        message += `\n`;
+      }
+      
+      // 如果有手续费信息，添加到消息中
+      if (status.fees) {
+        message += `*Fees*:\n`;
+        if (status.fees.pendingFeesX) {
+          message += `Pending ${position.tokenPair.tokenASymbol}: ${status.fees.pendingFeesX.toString()}\n`;
+        }
+        if (status.fees.pendingFeesY) {
+          message += `Pending ${position.tokenPair.tokenBSymbol}: ${status.fees.pendingFeesY.toString()}\n`;
+        }
+        if (status.fees.totalClaimedFeesX) {
+          message += `Total Claimed ${position.tokenPair.tokenASymbol}: ${status.fees.totalClaimedFeesX.toString()}\n`;
+        }
+        if (status.fees.totalClaimedFeesY) {
+          message += `Total Claimed ${position.tokenPair.tokenBSymbol}: ${status.fees.totalClaimedFeesY.toString()}\n`;
+        }
+        message += `\n`;
+      }
+      
+      // 如果有奖励信息，添加到消息中
+      if (status.rewards) {
+        message += `*Rewards*:\n`;
+        if (status.rewards.rewardOne) {
+          message += `Reward One: ${status.rewards.rewardOne.toString()}\n`;
+        }
+        if (status.rewards.rewardTwo) {
+          message += `Reward Two: ${status.rewards.rewardTwo.toString()}\n`;
+        }
+        message += `\n`;
+      }
+      
+      // 如果有最后更新时间，添加到消息中
+      if (status.lastUpdatedAt) {
+        const lastUpdateTime = new Date(status.lastUpdatedAt.toNumber() * 1000);
+        message += `*Last Updated*: ${lastUpdateTime.toLocaleString()}\n\n`;
+      }
+      
       // 是否需要发送通知的条件判断
       let shouldNotify = false;
       
       // 检查各种可能需要通知的条件
+      
+      // 0. 新创建的仓位首次检查状态时立即发送通知
+      if (!position.lastStatus) {
+        message += `✅ *New position is now being monitored*\n\n`;
+        shouldNotify = true;
+      }
       
       // 1. 价格范围变化超过阈值
       if (status.priceRangeChanged) {
@@ -301,6 +428,42 @@ export class PositionMonitor {
           message += `⚠️ *Position is now out of range*\n\n`;
         }
         shouldNotify = true;
+      }
+      
+      // 3. 如果链上数据显示流动性或手续费有变化，也通知
+      if (status.onChainPosition && position.lastStatus) {
+        const lastStatus = position.lastStatus as any;
+        let changes = [];
+        
+        // 检查流动性变化
+        if (lastStatus.liquidityX !== status.liquidityX || lastStatus.liquidityY !== status.liquidityY) {
+          changes.push('liquidity');
+        }
+        
+        // 检查手续费变化
+        if (status.fees && lastStatus.fees) {
+          if (lastStatus.fees.pendingFeesX !== status.fees.pendingFeesX || 
+              lastStatus.fees.pendingFeesY !== status.fees.pendingFeesY) {
+            changes.push('pending fees');
+          }
+          if (lastStatus.fees.totalClaimedFeesX !== status.fees.totalClaimedFeesX || 
+              lastStatus.fees.totalClaimedFeesY !== status.fees.totalClaimedFeesY) {
+            changes.push('claimed fees');
+          }
+        }
+        
+        // 检查奖励变化
+        if (status.rewards && lastStatus.rewards) {
+          if (lastStatus.rewards.rewardOne !== status.rewards.rewardOne || 
+              lastStatus.rewards.rewardTwo !== status.rewards.rewardTwo) {
+            changes.push('rewards');
+          }
+        }
+        
+        if (changes.length > 0) {
+          shouldNotify = true;
+          message += `ℹ️ *On-chain updates detected*: ${changes.join(', ')}\n\n`;
+        }
       }
       
       // 如果应该发送通知，则发送

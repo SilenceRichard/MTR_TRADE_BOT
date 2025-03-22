@@ -66,6 +66,20 @@ export interface Position {
     timestamp: Date;           // 状态时间戳
     currentLowerPrice?: number; // 当前下限价格
     currentUpperPrice?: number; // 当前上限价格
+    // 链上数据
+    liquidityX?: string;       // X代币流动性
+    liquidityY?: string;       // Y代币流动性
+    fees?: {                   // 手续费信息
+      pendingFeesX: BN;
+      pendingFeesY: BN;
+      totalClaimedFeesX: BN;
+      totalClaimedFeesY: BN;
+    };
+    rewards?: {                // 奖励信息
+      rewardOne: BN;
+      rewardTwo: BN;
+    };
+    lastUpdatedAt?: string;    // 链上最后更新时间
   };
   
   // 用户信息

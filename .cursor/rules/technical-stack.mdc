@@ -1,0 +1,11 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Technical Stack
+Backend: Node.js (Express, Prisma ORM, PostgreSQL on Neon, AWS)
+Frontend: React, TypeScript, Tailwind CSS, Framer Motion for animations
+Database: PostgreSQL (Neon for serverless hosting), never JSON file storage
+Environment Separation: Dedicated databases for development, testing, and production
+Testing: Jest for unit and integration tests, Playwright for end-to-end testing

@@ -1,0 +1,132 @@
+{
+  "9289e4b8-5c98-4d0c-a3b0-8788a759eeb6": [
+    {
+      "id": "history_1742308193444",
+      "positionId": "9289e4b8-5c98-4d0c-a3b0-8788a759eeb6",
+      "timestamp": "2025-03-18T14:29:53.444Z",
+      "eventType": "status_check",
+      "priceAtEvent": 122.16538321579979,
+      "metadata": {
+        "activeBin": -5257,
+        "binInRange": true,
+        "currentLowerPrice": 122.16538321579979,
+        "currentUpperPrice": 122.40990952504602
+      }
+    }
+  ],
+  "c24162f7-eefb-41da-bf05-4d67a3d660a0": [
+    {
+      "id": "history_1742309260826",
+      "positionId": "c24162f7-eefb-41da-bf05-4d67a3d660a0",
+      "timestamp": "2025-03-18T14:47:40.826Z",
+      "eventType": "status_check",
+      "priceAtEvent": 122.85129093888573,
+      "metadata": {
+        "activeBin": -5243,
+        "binInRange": true,
+        "currentLowerPrice": 122.85129093888573,
+        "currentUpperPrice": 123.09719016146956
+      }
+    }
+  ],
+  "458ba1cf-ccb4-4ea7-aa45-13210c7918ae": [
+    {
+      "id": "history_1742309697614",
+      "positionId": "458ba1cf-ccb4-4ea7-aa45-13210c7918ae",
+      "timestamp": "2025-03-18T14:54:57.614Z",
+      "eventType": "status_check",
+      "priceAtEvent": 122.50785703825157,
+      "liquidityA": "9999997",
+      "liquidityB": "0",
+      "metadata": {
+        "activeBin": -5250,
+        "binInRange": true,
+        "currentLowerPrice": 122.50785703825157,
+        "currentUpperPrice": 122.75306884332005,
+        "onChainData": {
+          "liquidityX": "9999997",
+          "liquidityY": "0",
+          "fees": {
+            "pendingFeesX": "00",
+            "pendingFeesY": "00",
+            "totalClaimedFeesX": "00",
+            "totalClaimedFeesY": "00"
+          },
+          "rewards": {
+            "rewardOne": "00",
+            "rewardTwo": "00"
+          },
+          "lastUpdatedAt": "1742309693",
+          "positionBinData": [
+            {
+              "binId": -5251,
+              "price": "0.12245887348885603392",
+              "pricePerToken": "122.45887348885603392",
+              "binXAmount": "0",
+              "binYAmount": "6336948807",
+              "binLiquidity": "1.16894821044656951799527339488e+29",
+              "positionLiquidity": "0",
+              "positionXAmount": "0",
+              "positionYAmount": "0"
+            },
+            {
+              "binId": -5250,
+              "price": "0.12250785703825157633",
+              "pricePerToken": "122.50785703825157633",
+              "binXAmount": "56343422207",
+              "binYAmount": "4391",
+              "binLiquidity": "1.27320266759912775138582243524e+29",
+              "positionLiquidity": "0",
+              "positionXAmount": "0",
+              "positionYAmount": "0"
+            },
+            {
+              "binId": -5249,
+              "price": "0.12255686018106687696",
+              "pricePerToken": "122.55686018106687696",
+              "binXAmount": "60199326292",
+              "binYAmount": "0",
+              "binLiquidity": "1.36094786773579851459698746109e+29",
+              "positionLiquidity": "5.655228953360646769787357e+24",
+              "positionXAmount": "2501499",
+              "positionYAmount": "0"
+            },
+            {
+              "binId": -5248,
+              "price": "0.12260588292513930371",
+              "pricePerToken": "122.60588292513930371",
+              "binXAmount": "68670242020",
+              "binYAmount": "0",
+              "binLiquidity": "1.55307241541024755033023386931e+29",
+              "positionLiquidity": "5.6552240205151217979546e+24",
+              "positionXAmount": "2500499",
+              "positionYAmount": "0"
+            },
+            {
+              "binId": -5247,
+              "price": "0.12265492527830935943",
+              "pricePerToken": "122.65492527830935943",
+              "binXAmount": "68681238532",
+              "binYAmount": "0",
+              "binLiquidity": "1.55395935987146364475495687871e+29",
+              "positionLiquidity": "5.655285124524468598150774e+24",
+              "positionXAmount": "2499499",
+              "positionYAmount": "0"
+            },
+            {
+              "binId": -5246,
+              "price": "0.12270398724842068318",
+              "pricePerToken": "122.70398724842068318",
+              "binXAmount": "98748620490",
+              "binYAmount": "0",
+              "binLiquidity": "2.23454776660311508232551179388e+29",
+              "positionLiquidity": "5.653767685213647923022535e+24",
+              "positionXAmount": "2498500",
+              "positionYAmount": "0"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

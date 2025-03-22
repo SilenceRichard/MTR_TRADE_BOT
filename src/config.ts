@@ -51,4 +51,4 @@ export type PairInfo = {
   };
 };
 
-export const RPC = process.env.RPC || "https://api.devnet.solana.com";
+export const RPC = process.env.RPC || "https://api.devnet.solana.com"; 

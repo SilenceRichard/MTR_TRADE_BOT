@@ -13,7 +13,7 @@ export class FilePositionStorage implements PositionStorage {
   private positions: Map<string, Position> = new Map();
   private histories: Map<string, PositionHistory[]> = new Map();
 
-  constructor(dataDir: string = path.join(process.cwd(), 'data')) {
+  constructor(dataDir: string = path.join(process.cwd(), 'src', 'data')) {
     this.positionsPath = path.join(dataDir, 'positions.json');
     this.historyPath = path.join(dataDir, 'position_history.json');
     

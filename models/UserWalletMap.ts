@@ -38,7 +38,7 @@ export class FileUserWalletMapStorage implements UserWalletMapStorage {
   private readonly mappingsFile: string;
   private mappings: Record<number, UserWalletMapping> = {};
 
-  constructor(dataPath: string = path.join(process.cwd(), 'data')) {
+  constructor(dataPath: string = path.join(process.cwd(), 'src', 'data')) {
     this.dataPath = dataPath;
     this.mappingsFile = path.join(this.dataPath, 'user_wallet_mappings.json');
     this.loadMappings();

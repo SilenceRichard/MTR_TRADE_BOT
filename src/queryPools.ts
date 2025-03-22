@@ -145,4 +145,4 @@ export const sendPairInfo = async (
     reply_markup: { inline_keyboard: buttons },
   });
   return pairInfo;
-};
+}; 
